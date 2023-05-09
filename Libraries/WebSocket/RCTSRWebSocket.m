@@ -1302,21 +1302,61 @@ static const size_t RCTSRFrameHeaderOverhead = 32;
   if (_secure && !_pinnedCertFound && (eventCode == NSStreamEventHasBytesAvailable || eventCode == NSStreamEventHasSpaceAvailable)) {
     NSArray *sslCerts = _urlRequest.RCTSR_SSLPinnedCertificates;
     if (sslCerts) {
+      // Patch inspired by https://github.com/dirkx/Security-Pinning-by-CA
+      // Thanks!
+      NSString* domain = [[_urlRequest URL] host];
+      CFStringRef domainRef = (__bridge CFStringRef) domain;
+      RCTLogInfo(@"RCTSRWebSocket: Validating against %lu pinned trust anchors. Expected hostname: %@", (unsigned long) sslCerts.count, domain);
       SecTrustRef secTrust = (__bridge SecTrustRef)[aStream propertyForKey:(__bridge id)kCFStreamPropertySSLPeerTrust];
       if (secTrust) {
-        NSInteger numCerts = SecTrustGetCertificateCount(secTrust);
-        for (NSInteger i = 0; i < numCerts && !_pinnedCertFound; i++) {
-          SecCertificateRef cert = SecTrustGetCertificateAtIndex(secTrust, i);
-          NSData *certData = CFBridgingRelease(SecCertificateCopyData(cert));
+        SecTrustResultType result;
+        OSStatus err = errSecSuccess;
+        CFArrayRef caChainArrayRef = (__bridge CFArrayRef) sslCerts;
 
-          for (id ref in sslCerts) {
-            SecCertificateRef trustedCert = (__bridge SecCertificateRef)ref;
-            NSData *trustedCertData = CFBridgingRelease(SecCertificateCopyData(trustedCert));
+        if (err == errSecSuccess) {
+          err = SecTrustSetAnchorCertificates(secTrust, caChainArrayRef);
+        }
 
-            if ([trustedCertData isEqualToData:certData]) {
+        if (err == errSecSuccess) {
+          err = SecTrustSetAnchorCertificatesOnly(secTrust, YES);
+        }
+
+        if (err == errSecSuccess) {
+          err = SecTrustSetPolicies(secTrust, SecPolicyCreateSSL(YES, domainRef));
+        }
+
+        if (err == errSecSuccess) {
+          err = SecTrustEvaluate(secTrust, &result);
+        }
+
+        if (err == errSecSuccess) {
+          switch (result) {
+            case kSecTrustResultProceed:
+              RCTLogInfo(@"RCTSRWebSocket: GOOD. kSecTrustResultProceed - the user explicitly trusts this CA");
               _pinnedCertFound = YES;
+	      break;
+            case kSecTrustResultUnspecified:
+              RCTLogInfo(@"RCTSRWebSocket: GOOD. kSecTrustResultUnspecified - So things are technically trusted. But the user was not involved.");
+              _pinnedCertFound = YES;
+	      break;
+            case kSecTrustResultInvalid:
+              RCTLogInfo(@"RCTSRWebSocket: FAIL. kSecTrustResultInvalid");
               break;
-            }
+            case kSecTrustResultDeny:
+              RCTLogInfo(@"RCTSRWebSocket: FAIL. kSecTrustResultDeny (i.e. user said no explicitly)");
+              break;
+            case kSecTrustResultFatalTrustFailure:
+              RCTLogInfo(@"RCTSRWebSocket: FAIL. kSecTrustResultFatalTrustFailure");
+              break;
+            case kSecTrustResultOtherError:
+              RCTLogInfo(@"RCTSRWebSocket: FAIL. kSecTrustResultOtherError");
+              break;
+            case kSecTrustResultRecoverableTrustFailure:
+              RCTLogInfo(@"RCTSRWebSocket: FAIL. kSecTrustResultRecoverableTrustFailure (i.e. user could say OK, but has not been asked this)");
+              break;
+            default:
+              NSAssert(NO, @"RCTSRWebSocket: Unexpected result: %d", result);
+              break;
           }
         }
       }

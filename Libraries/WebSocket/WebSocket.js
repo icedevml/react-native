@@ -93,7 +93,7 @@ class WebSocket extends (EventTarget(...WEBSOCKET_EVENTS): any) {
   constructor(
     url: string,
     protocols: ?string | ?Array<string>,
-    options: ?{headers?: {origin?: string, ...}, ...},
+    options: ?{headers?: {origin?: string, _iosSSLTrustedRoots?: string, ...}, ...},
   ) {
     super();
     this.url = url;
@@ -101,7 +101,7 @@ class WebSocket extends (EventTarget(...WEBSOCKET_EVENTS): any) {
       protocols = [protocols];
     }
 
-    const {headers = {}, ...unrecognized} = options || {};
+    const {headers = {}, _iosSSLTrustedRoots = null, ...unrecognized} = options || {};
 
     // Preserve deprecated backwards compatibility for the 'origin' option
     // $FlowFixMe[prop-missing]
@@ -140,7 +140,7 @@ class WebSocket extends (EventTarget(...WEBSOCKET_EVENTS): any) {
     );
     this._socketId = nextWebSocketId++;
     this._registerEvents();
-    NativeWebSocketModule.connect(url, protocols, {headers}, this._socketId);
+    NativeWebSocketModule.connect(url, protocols, {headers, _iosSSLTrustedRoots}, this._socketId);
   }
 
   get binaryType(): ?BinaryType {

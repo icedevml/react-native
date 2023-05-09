@@ -90,7 +90,24 @@ RCT_EXPORT_METHOD(connect
     }];
   }
 
-  RCTSRWebSocket *webSocket = [[RCTSRWebSocket alloc] initWithURLRequest:request protocols:protocols];
+  NSMutableURLRequest *mutableRequest;
+  mutableRequest = request.mutableCopy;
+
+  if ([options._iosSSLTrustedRoots() isKindOfClass:NSString.class]) {
+    NSRange r1 = [options._iosSSLTrustedRoots() rangeOfString:@"-----BEGIN CERTIFICATE-----"];
+    NSRange r2 = [options._iosSSLTrustedRoots() rangeOfString:@"-----END CERTIFICATE-----"];
+    NSRange rSub = NSMakeRange(r1.location + r1.length, r2.location - r1.location - r1.length);
+    NSString *subCert = [options._iosSSLTrustedRoots() substringWithRange:rSub];
+
+    NSData *rawCertificate = [[NSData alloc] initWithBase64Encoding:subCert];
+    SecCertificateRef parsedCertificate = SecCertificateCreateWithData(NULL, (__bridge CFDataRef)rawCertificate);
+
+    NSArray* certArray = @[ (__bridge id)parsedCertificate ];
+
+    [mutableRequest setRCTSR_SSLPinnedCertificates:certArray];
+  }
+
+  RCTSRWebSocket *webSocket = [[RCTSRWebSocket alloc] initWithURLRequest:mutableRequest protocols:protocols];
   [webSocket setDelegateDispatchQueue:[self methodQueue]];
   webSocket.delegate = self;
   webSocket.reactTag = @(socketID);

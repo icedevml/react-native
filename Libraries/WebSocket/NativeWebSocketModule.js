@@ -15,7 +15,10 @@ export interface Spec extends TurboModule {
   +connect: (
     url: string,
     protocols: ?Array<string>,
-    options: {|headers?: Object|},
+    options: {
+      headers?: Object,
+      _iosSSLTrustedRoots?: string
+    },
     socketID: number,
   ) => void;
   +send: (message: string, forSocketID: number) => void;
